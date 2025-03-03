@@ -1,0 +1,70 @@
+To be clear, we do not need to wait to set up the new view with the new API. Whether we pay for it or get them to include it in our current package, we are going to use it. So please proceed in setting up the new view I outlined below. I wanted to add some clarifications so we are on the same page:
+
+-	We will be pulling two new fields to populate duplicate SF view 
+New: TrueRank
+New: ResultType
+-	I don’t want to erase or rewrite the current views until we can confirm the new API is outputting what we want 
+Keep: dacq_exp.target.seoclarity_union_view – do not alter
+Create: dacq_exp.target.seoclarity_union_view_newapi – 
+SEARCHRANK: TrueRank will replace HighestTrueRank for this calculation
+SEARCHRESULTTYPE: NEW! Pulls from the new SERPFeature field
+HIGHESTWEBRANK: REMOVE
+HIGHESTLOCALRANK: REMOVE
+HIGHESTNEWSRANK: REMOVE
+HIGHESTIMAGERANK: REMOVE
+HIGHESTVIDEORANK: REMOVE
+All other fields will remain the same (SearchValue, SearchDate, SearchURL, Engine, Device, AvgSearchVolume)
+
+
+
+New API call that we need to use for above fields
+The team finished building out the new API call: https://data.seoclarity.net/v1/task/keyword-ranking/bulk/ranking
+You will want to use x-api-key - b184952d-0305-49aa-abfe-96de41040d1c  as a "key" in your authorization and then your token as a value to place in the header.
+To provide richer structured data, this API supports JSON format and allows access to ranking extracts from the last 12 months. You can use it to download top X ranking URLs (defaults is top 30 rankings) and apply filters to retrieve any domain’s rankings.
+This API also integrates with the Storage Settings page (storageId), allowing for any platform integrated location be used to store the data. An example request is supplied below.
+The operators are as follows:
+eq: equal to (supports array)
+neq: not equal to (supports array)
+ct: contains
+nct: does not contain
+re: regular expression
+nre: regular expression does not match
+sw: starts with
+ew: ends with
+Formal documentation is in progress and we can share that once available but wanted to get you this info first. Let me know if you have any questions. 
+
+Example Query
+{
+    "device": "mobile",
+    "top": 20,
+    "startDate": 20250101,
+    "endDate": 20250101,
+    "searchEngine": "google.com",
+    "language": "en",
+    "storageId": 0,
+    "locationId": 0,
+    "query": {
+        "filters": [
+            {
+                "name": "domains",
+                "operation": "ct",
+                "value": "abc.com|def.com|xyz.com"
+            },
+            {
+                "name": "rank",
+                "operation": "<",
+                "value": "50"
+            },
+            {
+                "name": "search_volume",
+                "operation": "between",
+                "value": "[1-1000]"
+            },
+            {
+                "name": "keyword",
+                "operation": "ct",
+                "value": "s"
+            }
+        ]
+    }
+}
