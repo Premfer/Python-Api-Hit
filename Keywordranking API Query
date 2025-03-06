@@ -1,0 +1,48 @@
+Select * from (Select t.searchValue,
+t.searchDate,
+t.engine,
+t.device,
+p.searchRank,
+p.SEARCHRESULTTYPE,
+t.searchURL,
+t.avgSearchVolume,
+t.s3_file_name,
+t.s3_file_row
+from 
+(SELECT 
+    m.name AS searchValue,
+    m."date" AS searchDate,
+    cast(m.engine AS VARCHAR(20)) AS engine,
+    m.device AS device,
+    c.value:landingPage::VARCHAR  AS searchURL,
+	c.value:competitorName::VARCHAR(100) As Competitors,
+    NULL AS avgSearchVolume,
+    m.s3_file_name As s3_file_name,
+    m.s3_file_row As s3_file_row
+FROM dacq_exp.target.seoclarity_main  m,
+    LATERAL FLATTEN(input => parse_json(competitors):competitor) AS c) t
+inner join
+(SELECT
+    k.name AS searchValue,
+    k."date" AS searchDate,
+    k.engine AS engine,
+    k.device AS device,
+    r.value:trueRank::VARCHAR AS searchRank,
+    r.value:url::VARCHAR  AS searchURL,
+    r.value:type::VARCHAR AS SEARCHRESULTTYPE
+FROM dacq_exp.target.seoclarity_keywordranking_main as k,LATERAL FLATTEN(input => parse_json(rankings)) As r) p
+ON t.searchURL = p.searchURL and  ) u
+UNION ALL
+SELECT
+    name,
+    "date",
+    engine,
+    device,
+    highestTrueRank,
+    Null,
+    highestRankUrl,
+    avgSearchVolume,
+    s3_file_name,
+    s3_file_row
+FROM
+    dacq_exp.target.seoclarity_main ;
