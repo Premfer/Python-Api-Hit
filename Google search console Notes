@@ -1,0 +1,22 @@
+GSC Background:
+
+Google Search Console is a tool the SEO team uses to measure our performance within search engine results pages (SERP). It provides us with data on how Progressive.com, and our other tracked domains, is performing within organic search. It provides data by day, by search query, by search listing type and by URL. The data points provided for said dimensions are impressions, clicks, click-through-rate and average position within search results. This tool is also where the SEO team communicates to Google, through robots.txt files, XML sitemaps and disallow files, what URLs we want displayed in search results.
+
+The ask:
+
+The SEO team wants setup the GSC API so we can potentially cut the data, in a tool like Tableau, in more unique ways than the UX/UI allows for currently. Additionally, with the API we are hoping we’ll be able to store data long-term (GSC only retains data for the past 16 months).
+
+API Documentation:
+
+https://developers.google.com/webmaster-tools/about
+
+Where we would store the data:
+
+@Kelly, I’d assume we’d store this data in DACQ so we can query it from Snowflake. Can you advise if we would want to store this somewhere else?
+
+Timeline:
+
+Once we finish SEOClarity work, we can start roadmapping what timelines look like on this.
+
+In the meantime, take a look at the documentation from Google and let me know if you have any initial questions.
+
