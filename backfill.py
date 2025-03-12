@@ -1,0 +1,366 @@
+#http://api.seoclarity.net/seoClarity/tag?access_token=XXXXXXXXXX&type=0&limit=10&offs et=0
+
+#http://api.seoclarity.net/seoClarity/markets
+import os
+import json
+import requests
+import xmltodict
+from time import sleep
+from datetime import datetime, timedelta
+from requests.adapters import HTTPAdapter, Retry
+import time
+import logging
+from typing import Optional, Dict, Any, Union
+import traceback
+import boto3
+from botocore.exceptions import NoCredentialsError
+import subprocess
+
+
+# Constants
+
+
+
+os.environ["SEO_API_KEY"] = "158d065d-96f2-44c4-aa49-565944c67b38"
+
+# Configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Global Variables
+se_list=["bing","google"]
+devices=['d','m']
+records_collected = 0 # Global variable to track the number of records collected
+
+
+class APICallFailedException(Exception):
+    pass
+
+
+
+def generate_dates_for_month(year: int, month: int) -> list:
+    """
+    Generate a list of dates for a given month and year in the format YYYYMMDD.
+
+    Args:
+        year (int): The year for which to generate dates.
+        month (int): The month for which to generate dates.
+
+    Returns:
+        list: A list of dates in the format YYYYMMDD.
+    """
+    dates = []
+    start_date = datetime(year, month, 1)
+    while start_date.month == month:
+        dates.append(start_date.strftime("%Y%m%d"))
+        start_date += timedelta(days=1)
+    return dates
+
+
+year = 2024
+month = 10
+#dates = generate_dates_for_month(year, month)
+#print(dates)
+#print(type(dates[0]))
+
+dates = ["20241117"]
+#dates = ["20241028", "20241101"]
+#if "20240926" in dates:
+#    print("Date found!")
+#print(type(dates))
+
+def get_aws_credentials(env: str):
+    if env == 'dev':
+        p = subprocess.Popen(['pgraws', '-c', '-r', 'D-U-AWS35D-QUOTING-CORE'])
+        p.wait()
+    elif env == 'qa':
+        p = subprocess.Popen(['pgraws', '-c', '-r', 'Q-U-AWS35Q-QUOTING-CORE'])
+        p.wait()
+    elif env == 'prod':
+        p = subprocess.Popen(['pgraws', '-c', '-r', 'P-U-AWS35P-QUOTING-CORE'])
+        p.wait()
+
+def upload_to_s3(local_file, bucket, s3_key):
+    s3 = boto3.client('s3')
+    try:
+        s3.upload_file(local_file, bucket, s3_key)
+        print(f"{local_file} uploaded to {bucket} as {s3_key}")
+    except FileNotFoundError:
+        print(f"The file {local_file} was not found")
+    except NoCredentialsError:
+        print("Credentials not available")
+
+
+
+def xml_to_dict(response: requests.Response) -> Dict[str, Any]:
+    """
+    Convert XML response content to a dictionary.
+
+    Args:
+        response (requests.Response): The HTTP response object containing XML data.
+
+    Returns:
+        Dict[str, Any]: The parsed XML data as a dictionary.
+    """
+    data_dict = xmltodict.parse(response.content)
+    json_data = json.dumps(data_dict)
+    return json.loads(json_data)
+
+def f_out(json_data: Any, filename: str) -> None:
+    """
+    Append JSON data to a file.
+
+    Args:
+        json_data (Any): The data to be written to the file.
+        filename (str): The name of the file to append the data to.
+    """
+    with open(filename, "a") as f:
+        f.write(json.dumps(json_data) + "\n")
+
+
+def log_error(offset: int, date: str, resp: Optional[requests.Response] = None, message: Optional[str] = None) -> None:
+    """
+    Log error information to a file.
+
+    Args:
+        offset (int): The current offset value.
+        date (str): The current date being processed.
+        resp (Optional[requests.Response]): The HTTP response object containing error information.
+        message (Optional[str]): A custom error message.
+    """
+    current_date = datetime.now().strftime("%Y%m%d")
+    error_fname = f"error_seo_{current_date}.txt"
+    with open(error_fname, "a") as f:
+        f.write(f"Offset: {offset}\n")
+        if resp is not None:
+            f.write(f"STATUS: {resp.status_code}\n")
+            f.write(f"RESPONSE: {resp.text}\n")
+        if message is not None:
+            f.write(f"ERROR: {message}\n")
+        f.write(f"DATE: {date}\n")
+        f.write(f"TIME: {datetime.now()}\n")
+
+def save_offset(offset: int, se: str, device: str, date: str, fname: str) -> None:
+    """
+    Save the current state to a JSON file for later resumption.
+
+    Args:
+        offset (int): The current offset value.
+        se (str): The search engine being used.
+        device (str): The device type being used.
+        date (str): The current date being processed.
+    """
+    retry_filename = "retry_info.json"
+    retry_info = {
+        "offset": offset,
+        "search_engine": se,
+        "device": device,
+        "date": date,
+        "time": str(datetime.now())
+    }
+    with open(fname, "w") as f:
+        json.dump(retry_info, f)
+
+
+def load_offset() -> Optional[Dict[str, Any]]:
+    """
+    Load the saved state from a JSON file.
+
+    Returns:
+        Optional[Dict[str, Any]]: The saved state as a dictionary, or None if the file is empty or invalid.
+    """
+    retry_filename = "retry_info.json"
+    if os.path.exists(retry_filename):
+        try:
+            with open(retry_filename, "r") as f:
+                content = f.read().strip()
+                if content:
+                    return json.loads(content)
+                else:
+                    logging.info("Retry file is empty.")
+        except json.JSONDecodeError as e:
+            logging.error(f"Error decoding JSON from {retry_filename}: {e}")
+    return None
+
+# Call the se_call function to process keywords for a specific device and date.
+# The function parameters are determined based on whether we are resuming from a saved state or starting fresh.
+
+# Parameters:
+# - device: The current device being processed in the loop (either 'd' for desktop or 'm' for mobile).
+# - date: The current date being processed in the loop (e.g., '20240601').
+# - fname: The filename for logging output, constructed earlier in the loop (e.g., 'seoclarity_out_20240601.log').
+# - start_se if device == start_device else se_list[0]: 
+#     - If the current device matches the device from the saved state (start_device), use the search engine from the saved state (start_se).
+#     - Otherwise, use the first search engine in the se_list (se_list[0]).
+# - start_offset if device == start_device and date == start_date else 0:
+#     - If the current device and date match the device and date from the saved state (start_device and start_date), use the offset from the saved state (start_offset).
+#     - Otherwise, start from offset 0.
+
+
+def device_call() -> None:
+    """
+    Iterate over dates and devices, calling se_call for each combination.
+    Resumes from the saved state if available.
+    """
+    retry_info = load_offset()
+    if retry_info:
+        logging.info("Found previous failed session")
+        logging.info(retry_info)
+        start_date = retry_info["date"]
+        start_device = retry_info["device"]
+        start_se = retry_info["search_engine"]
+        start_offset = retry_info["offset"]
+    else:
+        start_date = dates[0]
+        start_device = devices[0]
+        start_se = se_list[0]
+        start_offset = 0
+    print("in device call")
+    date_index = dates.index(start_date)
+    for date in dates[date_index:]:
+        print("getting for " + str(date))
+        fname = f'seoclarity_out_{date}.log'
+        device_index = devices.index(start_device) if date == start_date else 0
+        for device in devices[device_index:]:
+            se_call(device, date, fname, start_se if device == start_device else se_list[0], start_offset if device == start_device and date == start_date else 0)
+            start_se = se_list[0]  # Reset start_se after the first call
+            start_offset = 0   # Reset start_offset after the first call
+        record_count = count_records_in_file(fname)
+        logging.info(f"Number of records in {fname} at the end of processing date {date}: {record_count}")
+
+def se_call(device: str, date: str, fname: str, se: str, offset: int) -> None:
+    """
+    Call the keyword API for a specific search engine, device, and date.
+    Handles pagination using the offset.
+
+    Args:
+        device (str): The device type being used.
+        date (str): The current date being processed.
+        fname (str): The filename for logging output.
+        se (str): The search engine being used.
+        offset (int): The current offset value.
+    """
+    print("in sec", date)
+    for se in se_list[se_list.index(se):]:
+        current_offset = offset  # Use the provided offset for the first search engine
+        print(date)
+        print(f"getting device: {device} for: {se} at offset: {str(current_offset)}")
+        while True:
+            l = keyword_call(current_offset,se,device, date, fname) #either dict or Nonetype
+            current_offset += 100
+            sleep(1)
+            if l is None:
+                print('end of keywords')
+                print(f"last offset:{current_offset} ")
+                break
+            elif l == "failed":
+                logging.error("Failed after retries. Logging error and terminating.")
+                print(f"saving last offset:{str(current_offset)} for device:{device} for:{se} on:{date}")
+                save_offset(current_offset - 100, se, device, date, fname="retry_info.json")
+                raise APICallFailedException("API call failed after retries.")
+        print(f'end of keywords for:{se}')
+        current_offset = 0 # Reset offset for the next search engine
+        #print("keyword count: ")
+       #print(records_collected)
+        
+    return
+
+def count_records_in_file(filename: str) -> int:
+    """
+    Count the number of records (lines) in the specified file.
+
+    Args:
+        filename (str): The name of the file to count records in.
+
+    Returns:
+        int: The number of records (lines) in the file.
+    """
+    try:
+        with open(filename, 'r') as file:
+            return sum(1 for line in file)
+    except FileNotFoundError:
+        logging.warning(f"File {filename} not found.")
+        return 0
+    except Exception as e:
+        logging.error(f"An error occurred while counting records in {filename}: {e}")
+        return 0
+
+
+def keyword_call(offset: int, se: str, device: str, date: str, fname: str) -> Union[bool, None, str]:
+    """
+    Make a keyword API call and process the response.
+
+    Args:
+        offset (int): The current offset value.
+        se (str): The search engine being used.
+        device (str): The device type being used.
+        date (str): The current date being processed.
+        fname (str): The filename for logging output.
+
+    Returns:
+        Union[bool, None, str]: True if keywords are successfully processed, 
+                                None if the list is empty, 
+                                "failed" if an error occurs.
+    """
+    s = requests.Session()
+    retries = Retry(total=20, backoff_factor=1, status_forcelist=[502, 503, 504])
+    s.mount('http://', HTTPAdapter(max_retries=retries))
+    url = 'http://api.seoclarity.net/seoClarity/keyword?'
+    params = {
+        'access_token': os.environ['SEO_API_KEY'],
+        'offset': offset,
+        'Limit': '100',
+        'sDate': date,
+        'eDate': date,
+        'engine': se,
+        'device': device,
+        'market': 'en-us',
+    }
+    try:
+        start_time = time.time() 
+        resp = s.get(url, params=params)
+        end_time = time.time()
+        duration = end_time - start_time
+        #print(duration)
+        f_out(duration,"call_duration.txt")
+        resp.raise_for_status()
+        kw_dict = xml_to_dict(resp)
+        save_offset(offset, se,device,date, fname="retry_info_call.json")
+
+        if kw_dict['keywords'] is not None:
+            #print("TYPE:")
+           # print(type(kw_dict['keywords']['keyword']))
+            if isinstance(kw_dict['keywords']['keyword'], list):
+                for i in kw_dict['keywords']['keyword']:
+                    i["engine"] = se
+                    i["device"] = device
+                    f_out(i, fname)
+            elif isinstance(kw_dict['keywords']['keyword'], dict):
+                # Handle the case where there is only one keyword and it's a dictionary
+                kw_dict['keywords']['keyword']["engine"] = se
+                kw_dict['keywords']['keyword']["device"] = device
+                f_out(kw_dict['keywords']['keyword'], fname)
+            else:
+                print('Unexpected format: keyword is not a list or dict')
+                log_error(offset, date, message="Unexpected format: keyword is not a list or dict")
+                return True  # Continue the loop
+        else:
+            print('Empty list or unexpected format')
+            return None
+        return True
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+        log_error(offset, date, resp=resp)
+        return "failed"
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        traceback.print_exc()
+        print(err)
+        log_error(offset, date, message=str(err))
+        return "failed"
+
+
+try:
+    print("starting.....")
+    device_call()
+except APICallFailedException as e:
+    print(f"Terminating program: {e}")
