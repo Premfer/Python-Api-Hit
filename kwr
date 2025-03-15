@@ -1,0 +1,63 @@
+import json
+import requests
+
+def ranking_call() -> None:
+
+    url = "https://api.seoclarity.net/seoClarity/task/v1/dailyRanking/ranking"
+
+    headers = { "access_token":"b184952d-0305-49aa-abfe-96de41040d1c"}
+
+    data = {
+    "device": "desktop",
+    "top": 100,
+    "startDate": 20250101,
+    "endDate": 20250131,
+    "searchEngine": "google.com",
+    "language": "en",
+    "storageId": 0,
+    "locationId": 0,
+    "query": {
+        "filters": [
+        ]
+    }
+}
+    s = requests.Session()
+    #retries = Retry(total=20, backoff_factor=1, status_forcelist=[502, 503, 504])
+    #s.mount('https://', HTTPAdapter(max_retries=retries))
+   # response = s.post(url, headers=headers, json=data)
+   # print(response.json())
+    urlrank='https://api.seoclarity.net/seoClarity/task/v1/dailyRanking/ranking/task_id_ad55b75b68962b6e78fcc3513b6acd51_20250312024110'
+    #+response.json()['taskId']
+    status = True
+    while status:
+        keywordresp=s.get(urlrank,headers=headers)
+        if (keywordresp.status_code != 200):
+            #check the the status and assign to offense_response.status_code
+            print("Status code is not 200, entering sleep for 5 seconds")
+            time.sleep(90)
+        else:
+            print("status code is 200, hence exiting")
+            status = False
+    files=keywordresp.json()['files']
+    files=[1,1]
+    
+    for file in files:
+        i=0
+        
+        headers = {"Content-Type": "application/json" }      
+        response = s.get('https://cloudv2.seoclarity.net/temporary-files-central/11658/keywordSerpRankingDetails_11658_2025-01-01_google.com_en_desktop_national_task_id_ad55b75b68962b6e78fcc3513b6acd51_20250312024110.json?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250312T024431Z&X-Amz-SignedHeaders=host&X-Amz-Expires=604800&X-Amz-Credential=STX1NXQFSSL4TBWVR1SDKR35%2F20250312%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=9edf13992bc7cd3d78320e64258debb9d9aee0547ea9c6e5fa784b4e08b9ba8a',headers=headers)
+        file_Path = 'file0.json'
+        f_out(json_data=response.text,filename=file_Path)
+
+        print('success......')
+def f_out(json_data: any, filename: str) -> None:
+    """
+    Append JSON data to a file.
+
+    Args:
+        json_data (Any): The data to be written to the file.
+        filename (str): The name of the file to append the data to.
+    """
+    with open(filename, "a",encoding="utf-8") as f:
+        f.write(json_data)
+ranking_call()
