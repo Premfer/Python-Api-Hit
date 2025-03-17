@@ -1,0 +1,30 @@
+SELECT * FROM 
+        SELECT
+            k.name AS searchValue,
+            k."date" AS searchDate,
+            k.engine AS engine,
+            k.device AS device,
+            r.value:trueRank::VARCHAR AS searchRank,
+            r.value:type::VARCHAR AS SEARCHRESULTTYPE
+            r.value:url::VARCHAR AS searchURL,
+            NULL,
+            t.s3_file_name,
+            t.s3_file_row
+        FROM dacq_exp.target.seoclarity_keywordranking_main k,
+            LATERAL FLATTEN(input => parse_json(k.rankings)) AS r
+   
+UNION ALL
+
+SELECT
+
+    name,
+    "date",
+    engine,
+    device,
+    highestTrueRank,
+    NULL,
+    highestRankUrl,
+    avgSearchVolume,
+    s3_file_name,
+    s3_file_row
+FROM dacq_exp.target.seoclarity_keywordranking_main;
