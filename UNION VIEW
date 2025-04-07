@@ -1,0 +1,67 @@
+CREATE OR REPLACE VIEW dacq_exp.target.seoclarity_union_view_newapi As
+SELECT * FROM (
+        SELECT 
+        t.searchValue,
+        t.searchDate,
+        t.engine,
+        t.device,
+        p.searchRank,
+        p.searchResultType,
+        t.searchURL,
+        p.webRank,
+        t.avgSearchVolume,
+        t.s3_file_name,
+        t.s3_file_row
+    FROM 
+    (
+        SELECT 
+            m.name AS searchValue,
+            m."date" AS searchDate,
+            CAST(m.engine AS VARCHAR(20)) AS engine,
+            m.device AS device,
+            c.value:landingPage::VARCHAR AS searchURL,
+            c.value:competitorName::VARCHAR(100) AS Competitors,
+            NULL AS avgSearchVolume,
+            m.s3_file_name AS s3_file_name,
+            m.s3_file_row AS s3_file_row
+        FROM dacq_exp.target.seoclarity_main m,
+            LATERAL FLATTEN(input => parse_json(m.competitors):competitor) AS c ) t
+    Left JOIN (
+        SELECT
+            k.name AS searchValue,
+            k."date" AS searchDate,
+            k.engine AS engine,
+            k.device AS device,
+            r.value:trueRank::VARCHAR AS searchRank,
+            r.value:url::VARCHAR AS searchURL,
+            r.value:type::VARCHAR AS searchResultType,
+            r.value:webRank::VARCHAR AS webRank
+        FROM dacq_exp.target.seoclarity_keywordranking_main k,
+            LATERAL FLATTEN(input => parse_json(k.rankings)) AS r) p
+    ON  t.searchValue = p.searchValue 
+        AND t.searchDate = p.searchDate 
+        AND t.searchURL = p.searchURL
+        AND (
+            (p.engine = 'google.com' AND t.engine = 'google') 
+            OR (p.engine = 'bing.com' AND t.engine = 'bing')
+        )
+        AND (
+            (p.device = 'desktop' AND t.device = 'd') 
+            OR (p.device = 'mobile' AND t.device = 'm')
+        )
+) u
+
+UNION ALL
+SELECT
+    name,
+    "date",
+    engine,
+    device,
+    highestTrueRank,
+    NULL,
+    highestRankUrl,
+    NULL,
+    avgSearchVolume,
+    s3_file_name,
+    s3_file_row
+FROM dacq_exp.target.seoclarity_main;
