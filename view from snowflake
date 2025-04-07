@@ -1,0 +1,42 @@
+create or replace view DACQ_EXP.TARGET.SEOCLARITY_UNION_VIEW_NEWAPI(
+	SEARCHVALUE,
+	SEARCHDATE,
+	ENGINE,
+	DEVICE,
+	SEARCHRANK,
+	SEARCHRESULTTYPE,
+	SEARCHURL,
+	WEBRANK,
+	AVGSEARCHVOLUME,
+	S3_FILE_NAME,
+	S3_FILE_ROW
+) as
+SELECT * FROM 
+        (SELECT
+            k.name AS searchValue,
+            k."date" AS searchDate,
+            k.engine AS engine,
+            k.device AS device,
+            r.value:trueRank::VARCHAR AS searchRank,
+            r.value:type::VARCHAR AS SEARCHRESULTTYPE,
+            r.value:url::VARCHAR AS searchURL,
+            r.value:webRank::VARCHAR AS webRank,
+            k.SERPVALUES:searchVolume as AVGSEARCHVOLUME,
+            k.s3_file_name,
+            k.s3_file_row
+        FROM dacq_exp.target.seoclarity_keywordranking_main k,
+            LATERAL FLATTEN(input => parse_json(k.rankings)) AS r,
+UNION ALL
+SELECT
+    name,
+    "date",
+    engine,
+    device,
+    null,
+    null,
+    null,
+    null,
+    SERPVALUES:searchVolume,
+    s3_file_name,
+    s3_file_row
+FROM dacq_exp.target.seoclarity_keywordranking_main);
