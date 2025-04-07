@@ -1,0 +1,49 @@
+SELECT * FROM 
+        (SELECT
+            k.name AS searchValue,
+            k."date" AS searchDate,
+            k.engine AS engine,
+            k.device AS device,
+            r.value:trueRank::VARCHAR AS searchRank,
+            r.value:type::VARCHAR AS SEARCHRESULTTYPE,
+            r.value:url::VARCHAR AS searchURL,
+            r.value:webRank::VARCHAR AS webRank,
+            k.SERPVALUES:searchVolume as AVGSEARCHVOLUME,
+            k.s3_file_name,
+            k.s3_file_row
+        FROM dacq_exp.target.seoclarity_keywordranking_main k,
+            LATERAL FLATTEN(input => parse_json(k.rankings)) AS r,
+UNION ALL
+
+
+SELECT
+            keyword.name AS searchValue,
+            keyword."date" AS searchDate,
+            keyword.engine AS engine,
+            keyword.device AS device,
+            subrank.value:subrank::VARCHAR AS searchRank,
+            null,
+            subrank.value:url::VARCHAR AS searchURL,
+            null,
+            k.SERPVALUES:searchVolume as AVGSEARCHVOLUME,
+            k.s3_file_name,
+            k.s3_file_row
+        FROM dacq_exp.target.seoclarity_keywordranking_main keyword,
+            LATERAL FLATTEN(input => parse_json(k.rankings)) AS rank,
+			LATERAL FLATTEN(input => parse_json(rank.subRanks)) AS subrank
+             WHERE parse_json(rank.subRanks)IS NOT NULL,
+UNION ALL		
+		
+SELECT
+    name,
+    "date",
+    engine,
+    device,
+    null,
+    null,
+    null,
+    null,
+    SERPVALUES:searchVolume,
+    s3_file_name,
+    s3_file_row
+FROM dacq_exp.target.seoclarity_keywordranking_main);
