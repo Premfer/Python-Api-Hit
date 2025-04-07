@@ -1,0 +1,17 @@
+SELECT
+            keyword.name AS searchValue,
+            keyword."date" AS searchDate,
+            keyword.engine AS engine,
+            keyword.device AS device,
+            null AS searchRank,
+            null AS SEARCHRESULTTYPE,
+            rank.value:url::VARCHAR AS searchURL,
+            null AS WebRANK,
+            null as AVGSEARCHVOLUME,
+			subRank.value:url::VARCHAR As SUBURL,
+			subRank.value:subrank::VARCHAR As SubRank,
+            k.s3_file_name,
+            k.s3_file_row
+        FROM dacq_exp.target.seoclarity_keywordranking_main keyword,
+            LATERAL FLATTEN(input => parse_json(k.rankings)) AS rank,
+			LATERAL FLATTEN(input => parse_json(rank.subRanks)) AS subrank
