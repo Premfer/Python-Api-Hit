@@ -1,0 +1,32 @@
+SELECT * FROM (SELECT
+            keyword.name AS searchValue,
+            keyword."date" AS searchDate,
+            keyword.engine AS engine,
+            keyword.device AS device,
+            rank.value:trueRank::VARCHAR AS searchRank,
+            rank.value:type::VARCHAR AS SEARCHRESULTTYPE,
+            rank.value:url::VARCHAR AS searchURL,
+            rank.value:webRank::VARCHAR AS webRank,
+            keyword.SERPVALUES:searchVolume as AVGSEARCHVOLUME,           
+            NULL AS subrank,
+            NULL AS subURL,
+            FROM dacq_exp.target.seoclarity_keywordranking_main keyword,
+LATERAL FLATTEN(input => parse_json(keyword.rankings)) rank,
+--LATERAL FLATTEN(input => parse_json(rank.value:subRanks), OUTER => TRUE) subrank
+union all
+SELECT
+            keyword.name AS searchValue,
+            keyword."date" AS searchDate,
+            keyword.engine AS engine,
+            keyword.device AS device,
+            rank.value:trueRank::VARCHAR AS searchRank,
+            rank.value:type::VARCHAR AS SEARCHRESULTTYPE,
+            rank.value:url::VARCHAR AS searchURL,
+            rank.value:webRank::VARCHAR AS webRank,
+            keyword.SERPVALUES:searchVolume as AVGSEARCHVOLUME,           
+            subrank.value:subrank AS subrank,
+            subrank.value:url AS subURL,
+           FROM dacq_exp.target.seoclarity_keywordranking_main keyword,
+LATERAL FLATTEN(input => parse_json(keyword.rankings)) rank,
+LATERAL FLATTEN(input => parse_json(rank.value:subRanks), OUTER => TRUE) subrank
+where rank.value:subRanks is not null));
